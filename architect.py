@@ -11,7 +11,7 @@ from pdb import set_trace as bp
 from thop import profile
 from operations import *
 from genotypes import PRIMITIVES
-
+from distiller import *
 
 def _concat(xs):
     return torch.cat([x.view(-1) for x in xs])
@@ -19,13 +19,15 @@ def _concat(xs):
 
 class Architect(object):
 
-    def __init__(self, model, args):
+    def __init__(self, smodel, dmodel ,args):
         # self.network_momentum = args.momentum
         # self.network_weight_decay = args.weight_decay
-        self.model = model
+        self.smodel = smodel
+        self.dmodel = dmodel
         self._args = args
 
-        self.optimizer = torch.optim.Adam(list(self.model.module._arch_params.values()), lr=args.arch_learning_rate, betas=(0.5, 0.999))#, weight_decay=args.arch_weight_decay)
+        #self.optimizer = torch.optim.Adam(list(self.model.parameters()), lr=args.arch_learning_rate, betas=(0.5, 0.999))#, weight_decay=args.arch_weight_decay)
+        self.optimizer = torch.optim.Adam(list(self.smodel.module._arch_params.values())+list(self.dmodel.module.Connectors.parameters()), lr=args.arch_learning_rate, betas=(0.5, 0.999))#, weight_decay=args.arch_weight_decay)
         
         self.flops_weight = args.flops_weight
 
@@ -63,10 +65,11 @@ class Architect(object):
             else:
                 num_bits = np.random.choice(num_bits_list)
             
-            logit = self.model(input_valid, num_bits, temp=temp)
-            loss = self.model.module._criterion(logit, target_valid)
+            logit,l_kd = self.dmodel(input_valid, num_bits, temp=temp)
+            loss_CE = self.dmodel.module._criterion(logit, target_valid)
+            loss = loss_CE + loss_distill.sum() / batch_size / 10000
 
-            loss = loss * loss_scale[num_bits_list.index(num_bits)]
+            #loss = loss_CE * loss_scale[num_bits_list.index(num_bits)]
 
             loss.backward()
 

@@ -25,7 +25,7 @@ C.repo_name = 'instantnet'
 
 
 """Data Dir and Weight Dir"""
-C.dataset_path = "/home/yf22/dataset/" # root dir of CIFAR-100
+C.dataset_path = "/pytorch-cifar/" # root dir of CIFAR-100
 
 C.dataset = 'cifar100'
 
@@ -78,7 +78,7 @@ C.dws_chwise_quant = True
 C.num_layer_list = [1, 4, 4, 4, 4, 4, 1]
 C.num_channel_list = [16, 24, 32, 64, 112, 184, 352]
 C.stride_list = [1, 1, 2, 2, 1, 2, 1]
-
+C.fkd_num = 4
 C.stem_channel = 16
 C.header_channel = 1504
 

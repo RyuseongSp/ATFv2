@@ -37,6 +37,9 @@ from lr import LambdaLR
 from perturb import Random_alpha
 
 import operations
+
+import distiller
+
 operations.DWS_CHWISE_QUANT = config.dws_chwise_quant
 
 import argparse
@@ -74,12 +77,17 @@ def main(pretrain=True):
         torch.cuda.manual_seed(seed)
 
     # Model #######################################
-    model = Network(config=config)
-    model = torch.nn.DataParallel(model).cuda()
+    t_model = Network(config=config)
+    s_model = Network(config=config)
+    d_model = distiller.Distiller(t_model,s_model)
 
+    t_model = torch.nn.DataParallel(t_model).cuda()
+    s_model = torch.nn.DataParallel(s_model).cuda()
+    d_model = torch.nn.DataParallel(d_model).cuda()
+    #print(d_model.module)
     if type(pretrain) == str:
         partial = torch.load(pretrain + "/weights.pt")
-        state = model.state_dict()
+        state = t_model.state_dict()
         pretrained_dict = {k: v for k, v in partial.items() if k in state and state[k].size() == partial[k].size()}
 
         for key in partial:
@@ -96,22 +104,24 @@ def main(pretrain=True):
                     pretrained_dict[new_key] = partial[key]
 
         state.update(pretrained_dict)
-        model.load_state_dict(state, strict=False)
+        t_model.load_state_dict(state, strict=False)
 
     # if type(pretrain) == str:
     #     state = torch.load(pretrain + "/weights.pt")
     #     model.load_state_dict(state)
+    #print(t_model.module._arch_params)
+    #print(d_model.module)
+    architect = Architect(s_model, d_model,config)
 
-    architect = Architect(model, config)
 
     # Optimizer ###################################
     base_lr = config.lr
     
     parameters = []
-    parameters += list(model.module.stem.parameters())
-    parameters += list(model.module.cells.parameters())
-    parameters += list(model.module.header.parameters())
-    parameters += list(model.module.fc.parameters())
+    parameters += list(s_model.module.stem.parameters())
+    parameters += list(s_model.module.cells.parameters())
+    parameters += list(s_model.module.header.parameters())
+    parameters += list(s_model.module.fc.parameters())
     
     if config.opt == 'Adam':
         optimizer = torch.optim.Adam(
@@ -119,11 +129,8 @@ def main(pretrain=True):
             lr=config.lr,
             betas=config.betas)
     elif config.opt == 'Sgd':
-        optimizer = torch.optim.SGD(
-            parameters,
-            lr=config.lr,
-            momentum=config.momentum,
-            weight_decay=config.weight_decay)
+        optimizer = torch.optim.SGD(list(s_model.parameters()) + list(d_model.module.Connectors.parameters()), base_lr,
+                                momentum=config.momentum, weight_decay=config.weight_decay, nesterov=True)
     else:
         logging.info("Wrong Optimizer Type.")
         sys.exit()
@@ -213,7 +220,7 @@ def main(pretrain=True):
         # training
         tbar.set_description("[Epoch %d/%d][train...]" % (epoch + 1, config.nepochs))
         
-        train(train_loader_model, train_loader_arch, model, architect, optimizer, lr_policy, logger, epoch, num_bits_list=config.num_bits_list, bit_schedule=config.bit_schedule, 
+        train(train_loader_model, train_loader_arch, d_model, architect, optimizer, lr_policy, logger, epoch, num_bits_list=config.num_bits_list, bit_schedule=config.bit_schedule, 
             bit_schedule_arch=config.bit_schedule_arch, loss_scale=config.loss_scale, update_arch=update_arch, epsilon_alpha=epsilon_alpha, criteria=config.criteria, temp=temp, 
             distill_weight=config.distill_weight, cascad_weight=config.cascad_weight)
 
@@ -223,11 +230,11 @@ def main(pretrain=True):
         if epoch and not (epoch+1) % config.eval_epoch:
             tbar.set_description("[Epoch %d/%d][validation...]" % (epoch + 1, config.nepochs))
 
-            save(model, os.path.join(config.save, 'weights_%d.pt'%epoch))
+            save(s_model, os.path.join(config.save, 'weights_%d.pt'%epoch))
 
             with torch.no_grad():
                 if pretrain == True:
-                    acc_bits = infer(epoch, model, test_loader, logger, config.num_bits_list, temp=temp)
+                    acc_bits = infer(epoch, s_model, test_loader, logger, config.num_bits_list, temp=temp)
 
                     for i, num_bits in enumerate(config.num_bits_list):
                         logger.add_scalar('acc/val_bits_%d' % num_bits, acc_bits[i], epoch)
@@ -235,7 +242,7 @@ def main(pretrain=True):
                     logging.info("Epoch: " + str(epoch) +" Acc under different bits: " + str(acc_bits))
 
                 else:
-                    acc_bits, metric = infer(epoch, model, test_loader, logger, config.num_bits_list, finalize=True, temp=temp)
+                    acc_bits, metric = infer(epoch, s_model, test_loader, logger, config.num_bits_list, finalize=True, temp=temp)
 
                     for i, num_bits in enumerate(config.num_bits_list):
                         logger.add_scalar('acc/val_bits_%d' % num_bits, acc_bits[i], epoch)
@@ -248,7 +255,7 @@ def main(pretrain=True):
                     logging.info("Epoch: %d Flops: %.3f"%(epoch, metric))
                     state["flops"] = metric
 
-                    state['alpha'] = getattr(model.module, 'alpha')
+                    state['alpha'] = getattr(s_model.module, 'alpha')
                     state["acc"] = acc_bits
 
                     torch.save(state, os.path.join(config.save, "arch_%d.pt"%(epoch)))
@@ -286,7 +293,7 @@ def main(pretrain=True):
         torch.save(state, os.path.join(config.save, "arch.pt"))
 
 
-def train(train_loader_model, train_loader_arch, model, architect, optimizer, lr_policy, logger, epoch, num_bits_list, bit_schedule, 
+def train(train_loader_model, train_loader_arch, model,architect, optimizer, lr_policy, logger, epoch, num_bits_list, bit_schedule, 
     bit_schedule_arch, loss_scale, update_arch=True, epsilon_alpha=0, criteria=None, temp=1, distill_weight=False, cascad_weight=False):
     model.train()
 
@@ -315,8 +322,7 @@ def train(train_loader_model, train_loader_arch, model, architect, optimizer, lr
             input_search, target_search = dataloader_arch.next()
             input_search = input_search.cuda(non_blocking=True)
             target_search = target_search.cuda(non_blocking=True)
-
-            loss_arch = architect.step(input, target, input_search, target_search, num_bits_list, bit_schedule_arch, loss_scale, temp=temp)
+            loss_arch = architect.step(input, target,input_search, target_search, num_bits_list, bit_schedule_arch, loss_scale, temp=temp)
 
             if (step+1) % 10 == 0:
                 for i, num_bits in enumerate(num_bits_list):

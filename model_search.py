@@ -9,6 +9,7 @@ from thop import profile
 from matplotlib import pyplot as plt
 from thop import profile
 from quantize import QConv2d, QLinear
+from config_search import config
 
 
 # https://github.com/YongfeiYan/Gumbel_Softmax_VAE/blob/master/gumbel_softmax_vae.py
@@ -64,6 +65,7 @@ class MixedOp(nn.Module):
             # print(type(op), result.shape)
         return result
 
+    
 
     def forward_flops(self, size, alpha):
         # int: force #channel; tensor: arch_ratio; float(<=1): force width
@@ -92,25 +94,40 @@ class FBNet(nn.Module):
         self.header_channel = config.header_channel
 
         self.stem = ConvNorm(3, self.stem_channel, kernel_size=3, stride=1, padding=1, bias=False, num_bits_list=[32,])
-
         self.cells = nn.ModuleList()
 
+        self.fkd_num = config.fkd_num
+        self.fkd_cells = nn.ModuleList()
         layer_id = 1
 
         for stage_id, num_layer in enumerate(self.num_layer_list):
-            for i in range(num_layer):
-                if i == 0:
-                    if stage_id == 0:
-                        op = MixedOp(self.stem_channel, self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
+            if stage_id<self.fkd_num:
+                for i in range(num_layer):
+                    if i == 0:
+                        if stage_id == 0:
+                            op = MixedOp(self.stem_channel, self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
+                        else:
+                            op = MixedOp(self.num_channel_list[stage_id-1], self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
                     else:
-                        op = MixedOp(self.num_channel_list[stage_id-1], self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
-                else:
-                    op = MixedOp(self.num_channel_list[stage_id], self.num_channel_list[stage_id], layer_id, stride=1, num_bits_list=self.num_bits_list)
-                
-                layer_id += 1
-                self.cells.append(op)
+                        op = MixedOp(self.num_channel_list[stage_id], self.num_channel_list[stage_id], layer_id, stride=1, num_bits_list=self.num_bits_list)
+                    
+                    layer_id += 1
+                    #self.cells.append(op)
+                    self.fkd_cells.append(op)
+            else:
+                for i in range(num_layer):
+                    if i == 0:
+                        if stage_id == 0:
+                            op = MixedOp(self.stem_channel, self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
+                        else:
+                            op = MixedOp(self.num_channel_list[stage_id-1], self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
+                    else:
+                        op = MixedOp(self.num_channel_list[stage_id], self.num_channel_list[stage_id], layer_id, stride=1, num_bits_list=self.num_bits_list)
+                    
+                    layer_id += 1
+                    self.cells.append(op)
 
-
+        
         self.header = ConvNorm(self.num_channel_list[-1], self.header_channel, kernel_size=1, num_bits_list=[32,])
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
@@ -131,15 +148,50 @@ class FBNet(nn.Module):
             alpha = gumbel_softmax(getattr(self, "alpha"), temperature=temp)
     
         out = self.stem(input, num_bits=32)
-
-        for i, cell in enumerate(self.cells):
-            out = cell(out, alpha[i], num_bits)
+        for i, fcell in enumerate(self.fkd_cells):
+            out = fcell(out,alpha[i],num_bits)
+        for j, cell in enumerate(self.cells):
+            out = cell(out, alpha[j], num_bits)
 
         out = self.fc(self.avgpool(self.header(out, num_bits=32)).view(out.size(0), -1), num_bits=32)
 
         return out
         ###################################
+    def get_bn_before_relu(self):
+        '''
+        print(self.fkd_cells[0]._ops[-1])
+        bn1 = self.fkd_cells[0]._ops
+        bn2 = self.fkd_cells[1]._ops
+        bn3 = self.fkd_cells[2]._ops
+        bn4 = self.fkd_cells[3]._ops
+        '''
+        bn1 = (self.fkd_cells[0]._ops[-1].bn3 if isinstance(self.fkd_cells[0]._ops[-1], ConvBlock) else self.fkd_cells[0]._ops[-2].bn3)
+        bn2 = (self.fkd_cells[1]._ops[-1].bn3 if isinstance(self.fkd_cells[1]._ops[-1], ConvBlock) else self.fkd_cells[1]._ops[-2].bn3)
+        bn3 = (self.fkd_cells[2]._ops[-1].bn3 if isinstance(self.fkd_cells[2]._ops[-1], ConvBlock) else self.fkd_cells[2]._ops[-2].bn3)
+        bn4 = (self.fkd_cells[3]._ops[-1].bn3 if isinstance(self.fkd_cells[3]._ops[-1], ConvBlock) else self.fkd_cells[3]._ops[-2].bn3)
+        #print(bn1)
+        return [bn1, bn2, bn3, bn4]
+
+    def get_channel_num(self):
+        return [16, 24, 32, 64] #self.num_channel_list[:self.fkd_num]
     
+    def extract_feature(self, input, num_bits, temp=1):
+        feature = []
+        if self.sample_func == 'softmax':
+            alpha = F.softmax(getattr(self, "alpha"), dim=-1)
+        else:
+            alpha = gumbel_softmax(getattr(self, "alpha"), temperature=temp)
+    
+        out = self.stem(input, num_bits=32)
+        for i, fcell in enumerate(self.fkd_cells):
+            out = fcell(out, alpha[i],num_bits)
+            feature.append(out)
+        for j, cell in enumerate(self.cells):
+            out = cell(out, alpha[j], num_bits)
+
+        out = self.fc(self.avgpool(self.header(out, num_bits=32)).view(out.size(0), -1), num_bits=32)
+        return feature, out
+        ###################################
     def forward_flops(self, size, temp=1):
         if self.sample_func == 'softmax':
             alpha = F.softmax(getattr(self, "alpha"), dim=-1)
@@ -221,5 +273,5 @@ class FBNet(nn.Module):
 
 
 if __name__ == '__main__':
-    model = FBNet(num_classes=10)
+    model = FBNet(config)
     print(model)

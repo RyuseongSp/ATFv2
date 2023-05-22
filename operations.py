@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from thop import profile
-from thop.count_hooks import count_convNd
+from thop.vision.basic_hooks import count_convNd
 import sys
 import os.path as osp
 from easydict import EasyDict as edict
@@ -235,7 +235,6 @@ class ConvNorm(nn.Module):
 
     def forward(self, x, num_bits=0):
         x = self.relu(self.bn(self.conv(x, num_bits), num_bits))
-
         return x
 
     @staticmethod
