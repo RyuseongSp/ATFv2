@@ -156,7 +156,7 @@ else:
     # cosine
     C.learning_rate_min = 0.001
 
-    C.load_path = 'ckpt/search'
+    C.load_path = '/app/ckpt/search-20230607-074241/'
 
     C.eval_only = False
     C.update_bn = True

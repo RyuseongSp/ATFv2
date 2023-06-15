@@ -73,7 +73,7 @@ def main(pretrain=True):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
-
+    
     if os.path.exists(os.path.join(config.load_path, 'arch.pt')):
         state = torch.load(os.path.join(config.load_path, 'arch.pt'))
         alpha = state['alpha']
