@@ -101,31 +101,19 @@ class FBNet(nn.Module):
         layer_id = 1
 
         for stage_id, num_layer in enumerate(self.num_layer_list):
-            if stage_id<self.fkd_num:
-                for i in range(num_layer):
-                    if i == 0:
-                        if stage_id == 0:
-                            op = MixedOp(self.stem_channel, self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
-                        else:
-                            op = MixedOp(self.num_channel_list[stage_id-1], self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
+            for i in range(num_layer):
+                if i == 0:
+                    if stage_id == 0:
+                        op = MixedOp(self.stem_channel, self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
                     else:
-                        op = MixedOp(self.num_channel_list[stage_id], self.num_channel_list[stage_id], layer_id, stride=1, num_bits_list=self.num_bits_list)
-                    
-                    layer_id += 1
-                    #self.cells.append(op)
-                    self.fkd_cells.append(op)
-            else:
-                for i in range(num_layer):
-                    if i == 0:
-                        if stage_id == 0:
-                            op = MixedOp(self.stem_channel, self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
-                        else:
-                            op = MixedOp(self.num_channel_list[stage_id-1], self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
-                    else:
-                        op = MixedOp(self.num_channel_list[stage_id], self.num_channel_list[stage_id], layer_id, stride=1, num_bits_list=self.num_bits_list)
-                    
-                    layer_id += 1
-                    self.cells.append(op)
+                        op = MixedOp(self.num_channel_list[stage_id-1], self.num_channel_list[stage_id], layer_id, stride=self.stride_list[stage_id], num_bits_list=self.num_bits_list)
+                else:
+                    op = MixedOp(self.num_channel_list[stage_id], self.num_channel_list[stage_id], layer_id, stride=1, num_bits_list=self.num_bits_list)
+                        
+                layer_id += 1
+                self.cells.append(op)
+            if stage_id < self.fkd_num:
+                self.fkd_cells.append(op)
 
         
         self.header = ConvNorm(self.num_channel_list[-1], self.header_channel, kernel_size=1, num_bits_list=[32,])
@@ -148,10 +136,8 @@ class FBNet(nn.Module):
             alpha = gumbel_softmax(getattr(self, "alpha"), temperature=temp)
     
         out = self.stem(input, num_bits=32)
-        for i, fcell in enumerate(self.fkd_cells):
-            out = fcell(out,alpha[i],num_bits)
-        for j, cell in enumerate(self.cells):
-            out = cell(out, alpha[j], num_bits)
+        for i, cell in enumerate(self.cells):
+            out = cell(out, alpha[i], num_bits)
 
         out = self.fc(self.avgpool(self.header(out, num_bits=32)).view(out.size(0), -1), num_bits=32)
 
@@ -173,8 +159,7 @@ class FBNet(nn.Module):
         return [bn1, bn2, bn3, bn4]
 
     def get_channel_num(self):
-        return [16, 24, 32, 64] #self.num_channel_list[:self.fkd_num]
-    
+        return config.num_channel_list #
     def extract_feature(self, input, num_bits, temp=1):
         feature = []
         if self.sample_func == 'softmax':
@@ -183,11 +168,20 @@ class FBNet(nn.Module):
             alpha = gumbel_softmax(getattr(self, "alpha"), temperature=temp)
     
         out = self.stem(input, num_bits=32)
-        for i, fcell in enumerate(self.fkd_cells):
-            out = fcell(out, alpha[i],num_bits)
-            feature.append(out)
-        for j, cell in enumerate(self.cells):
-            out = cell(out, alpha[j], num_bits)
+        # for i, fcell in enumerate(self.fkd_cells):
+        #     out = fcell(out, alpha[i],num_bits)
+        #     feature.append(out)
+        ext_stage = self.num_layer_list[:self.fkd_num]
+        cnt=0
+        for i, cell in enumerate(self.cells):
+            out = cell(out, alpha[i], num_bits)
+            
+            cnt+=1
+            if len(ext_stage) != 0:
+                if cnt == ext_stage[0]:
+                    feature.append(out)
+                    cnt=0
+                    ext_stage.pop(0)
 
         out = self.fc(self.avgpool(self.header(out, num_bits=32)).view(out.size(0), -1), num_bits=32)
         return feature, out

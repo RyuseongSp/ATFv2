@@ -26,7 +26,7 @@ C.repo_name = 'instantnet'
 
 
 """Data Dir and Weight Dir"""
-C.dataset_path = "/home/yf22/dataset/" # root dir of cifar100
+C.dataset_path = "/app/pytorch-cifar/" # root dir of cifar100
 
 C.dataset = 'cifar100'
 
@@ -131,7 +131,7 @@ if C.pretrain == True:
     # cosine
     C.learning_rate_min = 0.001
 
-    C.load_path = 'ckpt/search'
+    C.load_path = '/app/ckpt/search-20230607-074241/'
 
     C.eval_only = False
 

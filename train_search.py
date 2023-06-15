@@ -415,7 +415,9 @@ def train(train_loader_model, train_loader_arch, model,architect, optimizer, lr_
                     if cascad_weight:
                         teacher_list = []
                         for num_bits in num_bits_list[::-1]:
-                            logit = model(input, num_bits, temp=temp)
+                            logit, _ = model(input, num_bits, temp=temp)
+                            #print(logit)
+                            #print(target)
                             loss = model.module._criterion(logit, target)
 
                             if len(teacher_list) > 0:

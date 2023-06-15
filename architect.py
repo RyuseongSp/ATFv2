@@ -12,7 +12,7 @@ from thop import profile
 from operations import *
 from genotypes import PRIMITIVES
 from distiller import *
-
+from config_search import config
 def _concat(xs):
     return torch.cat([x.view(-1) for x in xs])
 
@@ -66,8 +66,8 @@ class Architect(object):
                 num_bits = np.random.choice(num_bits_list)
             
             logit,l_kd = self.dmodel(input_valid, num_bits, temp=temp)
-            loss_CE = self.dmodel.module._criterion(logit, target_valid)
-            loss = loss_CE + loss_distill.sum() / batch_size / 10000
+            loss_CE = self.smodel.module._criterion(logit, target_valid)
+            loss = loss_CE + l_kd.sum() / config.batch_size / 10000
 
             #loss = loss_CE * loss_scale[num_bits_list.index(num_bits)]
 
@@ -86,8 +86,8 @@ class Architect(object):
             random_bits_2 = np.random.choice(num_bits_list_sort[1:-1])
 
             for num_bits in [max_bits, min_bits, random_bits_1, random_bits_2]:
-                logit = self.model(input_valid, num_bits, temp=temp)
-                loss = self.model.module._criterion(logit, target_valid)
+                logit = self.dmodel(input_valid, num_bits, temp=temp)
+                loss = self.smodel.module._criterion(logit, target_valid)
 
                 loss = loss * loss_scale[num_bits_list.index(num_bits)]
 
@@ -100,8 +100,8 @@ class Architect(object):
 
         elif bit_schedule == 'low2high':
             for num_bits in sorted(num_bits_list):
-                logit = self.model(input_valid, num_bits, temp=temp)
-                loss = self.model.module._criterion(logit, target_valid)
+                logit = self.dmodel(input_valid, num_bits, temp=temp)
+                loss = self.smodel.module._criterion(logit, target_valid)
 
                 loss = loss * loss_scale[num_bits_list.index(num_bits)]
 
@@ -114,8 +114,8 @@ class Architect(object):
 
         elif bit_schedule == 'high2low':
             for num_bits in sorted(num_bits_list, reverse=True):
-                logit = self.model(input_valid, num_bits, temp=temp)
-                loss = self.model.module._criterion(logit, target_valid)
+                logit = self.dmodel(input_valid, num_bits, temp=temp)
+                loss = self.smodel.module._criterion(logit, target_valid)
 
                 loss = loss * loss_scale[num_bits_list.index(num_bits)]
 
@@ -132,8 +132,8 @@ class Architect(object):
                 if self.cascad_arch:
                     teacher_list = []
                     for num_bits in num_bits_list[::-1]:
-                        logit = self.model(input_valid, num_bits, temp=temp)
-                        loss = self.model.module._criterion(logit, target_valid)
+                        logit = self.dmodel(input_valid, num_bits, temp=temp)
+                        loss = self.smodel.module._criterion(logit, target_valid)
 
                         if len(teacher_list) > 0:
                             for logit_teacher in teacher_list:
@@ -151,8 +151,8 @@ class Architect(object):
                         del loss
 
                 else:
-                    logit = self.model(input_valid, num_bits_list[-1], temp=temp)
-                    loss = self.model.module._criterion(logit, target_valid)
+                    logit = self.dmodel(input_valid, num_bits_list[-1], temp=temp)
+                    loss = self.smodel.module._criterion(logit, target_valid)
                     loss = loss * loss_scale[-1]
                     loss.backward()
                     loss_value[-1] = loss.item()
@@ -163,8 +163,8 @@ class Architect(object):
                     del loss
 
                     for num_bits in num_bits_list[:-1]:
-                        logit = self.model(input_valid, num_bits, temp=temp)
-                        loss = self.model.module._criterion(logit, target_valid) + self.distill_weight * nn.MSELoss()(logit, logit_teacher)
+                        logit = self.dmodel(input_valid, num_bits, temp=temp)
+                        loss = self.smodel.module._criterion(logit, target_valid) + self.distill_weight * nn.MSELoss()(logit, logit_teacher)
 
                         loss = loss * loss_scale[num_bits_list.index(num_bits)]
 
@@ -177,8 +177,8 @@ class Architect(object):
 
             else:
                 for num_bits in num_bits_list:
-                    logit = self.model(input_valid, num_bits, temp=temp)
-                    loss = self.model.module._criterion(logit, target_valid)
+                    logit = self.dmodel(input_valid, num_bits, temp=temp)
+                    loss = self.smodel.module._criterion(logit, target_valid)
 
                     loss = loss * loss_scale[num_bits_list.index(num_bits)]
 
@@ -198,16 +198,16 @@ class Architect(object):
                 loss_list = []
 
                 for i, num_bits in enumerate(num_bits_list[:-1]):
-                    logit = self.model(input_valid, num_bits, temp=temp)
-                    loss = self.model.module._criterion(logit, target_valid)
+                    logit = self.dmodel(input_valid, num_bits, temp=temp)
+                    loss = self.smodel.module._criterion(logit, target_valid)
 
                     loss_list.append(loss.item())
 
                     del logit
                     del loss
 
-                logit = self.model(input_valid, num_bits_list[-1], temp=temp)
-                loss = self.model.module._criterion(logit, target_valid)
+                logit = self.dmodel(input_valid, num_bits_list[-1], temp=temp)
+                loss = self.smodel.module._criterion(logit, target_valid)
                 loss_list.append(loss.item())
 
                 logit_teacher = logit.detach()
@@ -217,12 +217,12 @@ class Architect(object):
 
                 num_bits_max = num_bits_list[np.array(loss_list).argmax()]
 
-                logit = self.model(input_valid, num_bits_max, temp=temp)
+                logit = self.dmodel(input_valid, num_bits_max, temp=temp)
 
                 if num_bits_max == num_bits_list[-1]:
-                    loss = self.model.module._criterion(logit, target_valid)
+                    loss = self.smodel.module._criterion(logit, target_valid)
                 else:
-                    loss = self.model.module._criterion(logit, target_valid) + self.distill_weight * nn.MSELoss()(logit, logit_teacher)
+                    loss = self.smodel.module._criterion(logit, target_valid) + self.distill_weight * nn.MSELoss()(logit, logit_teacher)
 
                 loss = loss * loss_scale[num_bits_list.index(num_bits_max)]
 
@@ -232,8 +232,8 @@ class Architect(object):
                 loss_list = []
 
                 for i, num_bits in enumerate(num_bits_list):
-                    logit = self.model(input_valid, num_bits, temp=temp)
-                    loss = self.model.module._criterion(logit, target_valid)
+                    logit = self.dmodel(input_valid, num_bits, temp=temp)
+                    loss = self.smodel.module._criterion(logit, target_valid)
 
                     loss_list.append(loss.item())
 
@@ -242,8 +242,8 @@ class Architect(object):
 
                 num_bits_max = num_bits_list[np.array(loss_list).argmax()]
 
-                logit = self.model(input_valid, num_bits_max, temp=temp)
-                loss = self.model.module._criterion(logit, target_valid)
+                logit = self.dmodel(input_valid, num_bits_max, temp=temp)
+                loss = self.smodel.module._criterion(logit, target_valid)
 
                 loss = loss * loss_scale[num_bits_list.index(num_bits_max)]
 
@@ -262,7 +262,7 @@ class Architect(object):
 
         if self.flops_weight > 0:
             # flops = self.model.module.forward_flops((16, 32, 32))
-            flops = self.model.module.forward_flops((3, 32, 32), temp=temp)
+            flops = self.smodel.module.forward_flops((3, 32, 32), temp=temp)
                 
             self.flops_supernet = flops
             loss_flops = self.flops_weight * flops

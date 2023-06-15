@@ -31,7 +31,7 @@ from model_search import FBNet as Network
 from model_infer import FBNet_Infer
 
 from thop import profile
-from thop.count_hooks import count_convNd
+from thop.vision.basic_hooks import count_convNd
 
 import genotypes
 
