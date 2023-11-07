@@ -158,9 +158,12 @@ class FBNet(nn.Module):
         #print(bn1)
         return [bn1, bn2, bn3, bn4]
 
-    def get_channel_num(self):
-        return config.num_channel_list #
-    def extract_feature(self, input, num_bits, temp=1):
+    def get_channel_num(self, last=0):
+        if last == 0:
+            return config.num_channel_list #
+        else:
+            return config.num_channel_last 
+    def extract_feature(self, input, num_bits, last = 0,temp=1):
         feature = []
         if self.sample_func == 'softmax':
             alpha = F.softmax(getattr(self, "alpha"), dim=-1)
@@ -175,7 +178,6 @@ class FBNet(nn.Module):
         cnt=0
         for i, cell in enumerate(self.cells):
             out = cell(out, alpha[i], num_bits)
-            
             cnt+=1
             if len(ext_stage) != 0:
                 if cnt == ext_stage[0]:
@@ -184,6 +186,9 @@ class FBNet(nn.Module):
                     ext_stage.pop(0)
 
         out = self.fc(self.avgpool(self.header(out, num_bits=32)).view(out.size(0), -1), num_bits=32)
+        if last != 0:
+            for i, feat in enumerate(feature):
+                feature[i] = feat[:,-1,:,:].unsqueeze(1)
         return feature, out
         ###################################
     def forward_flops(self, size, temp=1):

@@ -306,7 +306,7 @@ def train(train_loader_model, train_loader_arch, model,architect, optimizer, lr_
         bit_schedule = 'high2low'
 
     for step in pbar:
-        input, target = dataloader_model.next()
+        input, target = next(dataloader_model)
 
         # end = time.time()
 
@@ -319,7 +319,7 @@ def train(train_loader_model, train_loader_arch, model,architect, optimizer, lr_
         if update_arch:
             pbar.set_description("[Step %d/%d]" % (step + 1, len(train_loader_arch)))
 
-            input_search, target_search = dataloader_arch.next()
+            input_search, target_search = next(dataloader_arch)
             input_search = input_search.cuda(non_blocking=True)
             target_search = target_search.cuda(non_blocking=True)
             loss_arch = architect.step(input, target,input_search, target_search, num_bits_list, bit_schedule_arch, loss_scale, temp=temp)
@@ -474,7 +474,7 @@ def train(train_loader_model, train_loader_arch, model,architect, optimizer, lr_
                         del logit
                         del loss
 
-                # nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
+                nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
                 optimizer.step()
                 optimizer.zero_grad()
 

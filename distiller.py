@@ -7,15 +7,16 @@ import scipy
 import math
 
 def distillation_loss(source, target, margin):
+    #margin = margin[:,-1,:,:].unsqueeze(1)
     target = torch.max(target, margin)
     loss = torch.nn.functional.mse_loss(source, target, reduction="none")
     loss = loss * ((source > target) | (target > 0)).float()
     return loss.sum()
 
 def build_feature_connector(t_channel, s_channel):
+
     C = [nn.Conv2d(s_channel, t_channel, kernel_size=1, stride=1, padding=0, bias=False),
-         nn.BatchNorm2d(t_channel)]
-    
+        nn.BatchNorm2d(t_channel)]    
     for m in C:
         #print(m.weight.shape)
         if isinstance(m, nn.Conv2d):
@@ -44,8 +45,7 @@ def get_margin_from_BN(bn):
 class Distiller(nn.Module):
     def __init__(self, t_net, s_net):
         super(Distiller, self).__init__()
-
-        t_channels = t_net.get_channel_num()
+        t_channels = t_net.get_channel_num(last=0)
         s_channels = s_net.get_channel_num()
         #print(s_channels)
         self.Connectors = nn.ModuleList([build_feature_connector(t, s) for t, s in zip(t_channels, s_channels)])
@@ -60,16 +60,15 @@ class Distiller(nn.Module):
 
     def forward(self, x, num_bits, temp=1):
 
-        t_feats, t_out = self.t_net.extract_feature(x, num_bits)
+        t_feats, t_out = self.t_net.extract_feature(x, num_bits, last=0)
         s_feats, s_out = self.s_net.extract_feature(x, num_bits)
         feat_num = len(t_feats)
-
         loss_distill = 0
         for i in range(feat_num):
-            # print(s_feats[i].shape)
-            # print(self.Connectors[i])
-            # print("---")
+            #print(t_feats[i].size())
             s_feats[i] = self.Connectors[i](s_feats[i])
+            # print(s_feats[i].size())
+
             loss_distill += distillation_loss(s_feats[i], t_feats[i].detach(), getattr(self, 'margin%d' % (i+1))) \
                             / 2 ** (feat_num - i - 1)
 

@@ -25,7 +25,7 @@ C.repo_name = 'instantnet'
 
 
 """Data Dir and Weight Dir"""
-C.dataset_path = "/pytorch-cifar/" # root dir of CIFAR-100
+C.dataset_path = "/app/pytorch-cifar/" # root dir of CIFAR-100
 
 C.dataset = 'cifar100'
 
@@ -77,6 +77,7 @@ C.dws_chwise_quant = True
 # C.num_layer_list = [1, 4, 4, 4, 4, 4, 1]
 C.num_layer_list = [1, 4, 4, 4, 4, 4, 1]
 C.num_channel_list = [16, 24, 32, 64, 112, 184, 352]
+C.num_channel_last = [1,1,1,1,1,1,1]
 C.stride_list = [1, 1, 2, 2, 1, 2, 1]
 C.fkd_num = 4
 C.stem_channel = 16
@@ -113,7 +114,7 @@ if C.pretrain == True:
     C.image_width = 32
     C.save = "pretrain"
 
-    C.num_bits_list = [4]
+    C.num_bits_list = [3, 4, 5, 6, 8]
 
     C.sample_func = 'softmax'
     C.criteria = None
@@ -145,7 +146,7 @@ else:
     C.image_width = 32
     C.save = "search"
 
-    C.nepochs = 25
+    C.nepochs = 20
     C.eval_epoch = 1
 
     C.lr_schedule = 'cosine'
@@ -177,5 +178,6 @@ C.efficiency_metric = 'flops'
 
 C.flops_weight = 1e-10
 # desire flops range: 5e7 FLOPs ~ 2e8 FLOPs
-C.flops_max = 1.3e8
-C.flops_min = 1.2e8
+C.flops_max = 1.3e8#1.3e8
+C.flops_min = 1.2e8#1.2e8
+

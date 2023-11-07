@@ -21,8 +21,8 @@ EOM
 image=$1
 shift
 gpu=$1
-# shift
-# python="$*"
+shift
+python="$*"
 
 if [ -z "$image" ]
 then
@@ -32,22 +32,25 @@ then
   usage
   exit 1
 fi
-if [ -z "$gpu" ]
-then
-  nvidia-smi
-  echo
-  echo " Error: Missing GPU(s) argument! Select GPU(s) from list above." 1>&2
-  usage
-  exit 1
-fi
-"""
-if [ -z "$python" ]
-then
-  echo
-  echo " Error: Missing file argument!" 1>&2
-  usage
-  exit 1
-fi
-"""
-printf "docker run -itd --ipc=host --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$gpu --workdir /app -v "$(pwd)":/app $image"
-docker run -itd --ipc=host --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$gpu --workdir /app -v "$(pwd)":/app -v /dataset/CIFAR100/cifar-100-python:/app/pytorch-cifar $image
+# if [ -z "$gpu" ]
+# then
+#   nvidia-smi
+#   echo
+#   echo " Error: Missing GPU(s) argument! Select GPU(s) from list above." 1>&2
+#   usage
+#   exit 1
+# fi
+
+# if [ -z "$python" ]
+# then
+#   echo
+#   echo " Error: Missing file argument!" 1>&2
+#   usage
+#   exit 1
+# fi
+
+# printf "docker run -itd --ipc=host --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$gpu --workdir /app -v "$(pwd)":/app $image"
+docker run -itd --rm --ipc=host --cpus 4 --gpus '"device=1"' --memory=16g --workdir /app --name lsp_atfv2_1 -v "$(pwd)":/app $image /bin/bash
+
+#--mount type=bind,source=/dataset/CIFAR100/cifar-100-python,target=/pytorch-cifar,readonly
+# " --runtime=nvidia "

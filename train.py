@@ -249,7 +249,7 @@ def train(train_loader_model, model, optimizer, lr_policy, logger, epoch, num_bi
 
         optimizer.zero_grad()
 
-        input, target = dataloader_model.next()
+        input, target = next(dataloader_model)
 
         input = input.cuda(non_blocking=True)
         target = target.cuda(non_blocking=True)
@@ -366,7 +366,7 @@ def train(train_loader_model, model, optimizer, lr_policy, logger, epoch, num_bi
                     del logit
                     del loss
 
-            # nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
+            nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
             optimizer.step()
             optimizer.zero_grad()
 
@@ -504,7 +504,7 @@ def train_bn(train_loader_model, model, logger, num_bits_list, distill_weight, n
         dataloader = iter(train_loader_model)
 
         for step in pbar:
-            input, target = dataloader.next()
+            input, target = next(dataloader)
 
             input = input.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)

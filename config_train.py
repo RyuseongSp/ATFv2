@@ -76,6 +76,7 @@ C.dws_chwise_quant = True
 # C.num_layer_list = [1, 4, 4, 4, 4, 4, 1]
 C.num_layer_list = [1, 4, 4, 4, 4, 4, 1]
 C.num_channel_list = [16, 24, 32, 64, 112, 184, 352]
+C.num_channel_last = [1,1,1,1,1,1,1]
 C.stride_list = [1, 1, 2, 2, 1, 2, 1]
 
 C.stem_channel = 16
@@ -131,8 +132,7 @@ if C.pretrain == True:
     # cosine
     C.learning_rate_min = 0.001
 
-    C.load_path = '/app/ckpt/search-20230607-074241/'
-
+    C.load_path = '/app/ckpt/search-20231021-064340/'
     C.eval_only = False
 
 else:
@@ -156,7 +156,7 @@ else:
     # cosine
     C.learning_rate_min = 0.001
 
-    C.load_path = '/app/ckpt/search-20230607-074241/'
+    C.load_path = '/app/ckpt/search-20231029-084553'
 
     C.eval_only = False
     C.update_bn = True

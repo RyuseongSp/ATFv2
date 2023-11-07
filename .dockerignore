@@ -1,0 +1,5 @@
+core
+dockerfile
+.dockerignore
+env.yml
+test.ipynb
