@@ -50,7 +50,7 @@ fi
 # fi
 
 # printf "docker run -itd --ipc=host --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$gpu --workdir /app -v "$(pwd)":/app $image"
-docker run -itd --rm --ipc=host --cpus 4 --gpus '"device=1"' --memory=16g --workdir /app --name lsp_atfv2_1 -v "$(pwd)":/app $image /bin/bash
+docker run -itd --rm --ipc=host --cpus 4 --gpus '"device=0"' --memory=16g --workdir /app --name lsp_atfv2_1 -v "$(pwd)":/app $image /bin/bash
 
 #--mount type=bind,source=/dataset/CIFAR100/cifar-100-python,target=/pytorch-cifar,readonly
 # " --runtime=nvidia "

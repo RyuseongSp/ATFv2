@@ -40,6 +40,8 @@ from quantize import QConv2d
 
 from calibrate_bn import bn_update
 
+import distiller
+
 operations.DWS_CHWISE_QUANT = config.dws_chwise_quant
 
 custom_ops = {QConv2d: count_convNd}
@@ -84,13 +86,15 @@ def main(pretrain=True):
         # alpha[:,0] = 10
 
     # Model #######################################
-    model = FBNet_Infer(alpha, config=config)
+    s_model = FBNet_Infer(alpha, config=config)
 
-    flops, params = profile(model, inputs=(torch.randn(1, 3, 32, 32),), custom_ops=custom_ops)
+    flops, params = profile(s_model, inputs=(torch.randn(1, 3, 32, 32),), custom_ops=custom_ops)
     logging.info("params = %fMB, FLOPs = %fGB", params / 1e6, flops / 1e9)
+    
+    d_model = distiller.Distiller(s_model,s_model)
 
-    model = torch.nn.DataParallel(model).cuda()
-
+    s_model = torch.nn.DataParallel(s_model).cuda()
+    d_model = torch.nn.DataParallel(d_model).cuda()
     # if type(config.pretrain) == str:
     #     state_dict = torch.load(config.pretrain)
 
@@ -116,12 +120,12 @@ def main(pretrain=True):
 
     if config.opt == 'Adam':
         optimizer = torch.optim.Adam(
-            model.parameters(),
+            s_model.parameters(),
             lr=config.lr,
             betas=config.betas)
     elif config.opt == 'Sgd':
         optimizer = torch.optim.SGD(
-            model.parameters(),
+            s_model.parameters(),
             lr=config.lr,
             momentum=config.momentum,
             weight_decay=config.weight_decay)
@@ -181,7 +185,7 @@ def main(pretrain=True):
                                           num_workers=4)
 
     if config.finetune_bn:
-        train_bn(train_loader_model, model, logger, config.num_bits_list, config.distill_weight, config.niters_per_epoch, 
+        train_bn(train_loader_model, s_model, logger, config.num_bits_list, config.distill_weight, config.niters_per_epoch, 
             ft_bn_epoch=config.ft_bn_epoch, ft_bn_lr=config.ft_bn_lr, ft_bn_momentum=config.ft_bn_momentum)
 
     if config.eval_only:
@@ -204,7 +208,7 @@ def main(pretrain=True):
         else:
             num_bits_list = config.num_bits_list
 
-        train(train_loader_model, model, optimizer, lr_policy, logger, epoch, num_bits_list=num_bits_list, bit_schedule=config.bit_schedule, 
+        train(train_loader_model, d_model, optimizer, lr_policy, logger, epoch, num_bits_list=num_bits_list, bit_schedule=config.bit_schedule, 
              loss_scale=config.loss_scale, distill_weight=config.distill_weight, cascad=config.cascad, update_bn_freq=config.update_bn_freq)
 
         torch.cuda.empty_cache()
@@ -216,7 +220,7 @@ def main(pretrain=True):
             
             with torch.no_grad():
 
-                acc_bits = infer(epoch, model, train_loader_model, test_loader, logger, config.num_bits_list, update_bn=False, show_distrib=False)
+                acc_bits = infer(epoch, s_model, train_loader_model, test_loader, logger, config.num_bits_list, update_bn=False, show_distrib=False)
 
                 for i, num_bits in enumerate(config.num_bits_list):
                     logger.add_scalar('acc/val_bits_%d' % num_bits, acc_bits[i], epoch)
@@ -226,11 +230,11 @@ def main(pretrain=True):
                 logger.add_scalar('flops/val', flops, epoch)
                 logging.info("Epoch %d: flops %.3f"%(epoch, flops))
 
-            save(model, os.path.join(config.save, 'weights_%d.pt'%epoch))
+            save(s_model, os.path.join(config.save, 'weights_%d.pt'%epoch))
 
-    save(model, os.path.join(config.save, 'weights.pt'))
+    save(s_model, os.path.join(config.save, 'weights.pt'))
 
-    logging.info('Final Eval - Acc under different bits: ' + str(infer(0, model, train_loader_model, test_loader, logger, config.num_bits_list, update_bn=config.update_bn, show_distrib=config.show_distrib)))
+    logging.info('Final Eval - Acc under different bits: ' + str(infer(0, s_model, train_loader_model, test_loader, logger, config.num_bits_list, update_bn=config.update_bn, show_distrib=config.show_distrib)))
 
 
 
@@ -309,9 +313,8 @@ def train(train_loader_model, model, optimizer, lr_policy, logger, epoch, num_bi
                 if cascad:
                     teacher_list = []
                     for num_bits in num_bits_list[::-1]:
-                        logit = model(input, num_bits)
+                        logit, dloss = model(input, num_bits)
                         loss = model.module._criterion(logit, target)
-
                         if len(teacher_list) > 0:
                             for logit_teacher in teacher_list:
                                 loss += distill_weight * nn.MSELoss()(logit, logit_teacher)

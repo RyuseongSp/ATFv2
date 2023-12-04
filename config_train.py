@@ -57,7 +57,7 @@ C.weight_decay = 5e-4
 
 C.betas=(0.5, 0.999)
 C.num_workers = 8
-
+C.fkd_num = 4
 
 """ Search Config """
 C.grad_clip = 5
@@ -132,7 +132,7 @@ if C.pretrain == True:
     # cosine
     C.learning_rate_min = 0.001
 
-    C.load_path = '/app/ckpt/search-20231021-064340/'
+    C.load_path = '/app/ckpt/search-20231128-144347/'
     C.eval_only = False
 
 else:
@@ -156,7 +156,7 @@ else:
     # cosine
     C.learning_rate_min = 0.001
 
-    C.load_path = '/app/ckpt/search-20231029-084553'
+    C.load_path = '/app/ckpt/search-20231128-144347/'
 
     C.eval_only = False
     C.update_bn = True
