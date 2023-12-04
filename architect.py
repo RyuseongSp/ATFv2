@@ -16,7 +16,6 @@ from config_search import config
 def _concat(xs):
     return torch.cat([x.view(-1) for x in xs])
 
-
 class Architect(object):
 
     def __init__(self, smodel, dmodel ,args):
