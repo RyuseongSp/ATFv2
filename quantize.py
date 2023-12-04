@@ -164,7 +164,7 @@ class QConv2d(nn.Conv2d):
                                       stride, padding, dilation, groups, bias)
         self.num_bits = num_bits
         self.num_bits_weight = num_bits_weight or num_bits
-
+        self.get_chan = out_channels
         self.dws = dws
 
         self.momentum = 0.1

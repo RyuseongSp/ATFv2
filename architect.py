@@ -15,8 +15,7 @@ from distiller import *
 from config_search import config
 def _concat(xs):
     return torch.cat([x.view(-1) for x in xs])
-
-
+    
 class Architect(object):
 
     def __init__(self, smodel, dmodel ,args):
@@ -24,6 +23,7 @@ class Architect(object):
         # self.network_weight_decay = args.weight_decay
         self.smodel = smodel
         self.dmodel = dmodel
+        #self.tmodel = dmodel.t_net
         self._args = args
 
         #self.optimizer = torch.optim.Adam(list(self.model.parameters()), lr=args.arch_learning_rate, betas=(0.5, 0.999))#, weight_decay=args.arch_weight_decay)
@@ -64,7 +64,6 @@ class Architect(object):
                 num_bits = max(num_bits_list)
             else:
                 num_bits = np.random.choice(num_bits_list)
-            
             logit,l_kd = self.dmodel(input_valid, num_bits, temp=temp)
             loss_CE = self.smodel.module._criterion(logit, target_valid)
             loss = loss_CE + l_kd.sum() / config.batch_size / 10000
@@ -134,7 +133,6 @@ class Architect(object):
                     for num_bits in num_bits_list[::-1]:
                         logit = self.dmodel(input_valid, num_bits, temp=temp)
                         loss = self.smodel.module._criterion(logit, target_valid)
-
                         if len(teacher_list) > 0:
                             for logit_teacher in teacher_list:
                                 loss += self.distill_weight * nn.MSELoss()(logit, logit_teacher)
@@ -156,7 +154,6 @@ class Architect(object):
                     loss = loss * loss_scale[-1]
                     loss.backward()
                     loss_value[-1] = loss.item()
-
                     logit_teacher = logit.detach()
 
                     del logit

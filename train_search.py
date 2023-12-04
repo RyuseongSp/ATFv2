@@ -415,7 +415,7 @@ def train(train_loader_model, train_loader_arch, model,architect, optimizer, lr_
                     if cascad_weight:
                         teacher_list = []
                         for num_bits in num_bits_list[::-1]:
-                            logit, _ = model(input, num_bits, temp=temp)
+                            logit, dloss = model(input, num_bits, temp=temp)
                             #print(logit)
                             #print(target)
                             loss = model.module._criterion(logit, target)
@@ -423,7 +423,7 @@ def train(train_loader_model, train_loader_arch, model,architect, optimizer, lr_
                             if len(teacher_list) > 0:
                                 for logit_teacher in teacher_list:
                                     loss += distill_weight * nn.MSELoss()(logit, logit_teacher)
-                            
+                                    #loss += distill_weight * dloss
                             teacher_list.append(logit.detach())
 
                             loss = loss * loss_scale[num_bits_list.index(num_bits)]

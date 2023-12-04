@@ -45,7 +45,7 @@ def get_margin_from_BN(bn):
 class Distiller(nn.Module):
     def __init__(self, t_net, s_net):
         super(Distiller, self).__init__()
-        t_channels = t_net.get_channel_num(last=0)
+        t_channels = t_net.get_channel_num()
         s_channels = s_net.get_channel_num()
         #print(s_channels)
         self.Connectors = nn.ModuleList([build_feature_connector(t, s) for t, s in zip(t_channels, s_channels)])
@@ -53,21 +53,28 @@ class Distiller(nn.Module):
         margins = [get_margin_from_BN(bn) for bn in teacher_bns]
         for i, margin in enumerate(margins):
             self.register_buffer('margin%d' % (i+1), margin.unsqueeze(1).unsqueeze(2).unsqueeze(0).detach())
-
+#loss_kl(F.log_softmax(out),F.softmax(out))
         self.t_net = t_net
         self.s_net = s_net
         self._criterion = nn.CrossEntropyLoss().cuda()
 
     def forward(self, x, num_bits, temp=1):
 
-        t_feats, t_out = self.t_net.extract_feature(x, num_bits, last=0)
+        t_feats, t_out = self.t_net.extract_feature(x, num_bits)
         s_feats, s_out = self.s_net.extract_feature(x, num_bits)
         feat_num = len(t_feats)
+        teacher_bns = self.t_net.get_bn_before_relu()
+        margins = [get_margin_from_BN(bn) for bn in teacher_bns]
+        for i, margin in enumerate(margins):
+            self.register_buffer('margin%d' % (i+1), margin.unsqueeze(1).unsqueeze(2).unsqueeze(0).detach())
         loss_distill = 0
+        #print(t_feats[0].size())
+        #print(s_feats[0].size())
         for i in range(feat_num):
+            #print(i)
             #print(t_feats[i].size())
+            #print(s_feats[i].size())
             s_feats[i] = self.Connectors[i](s_feats[i])
-            # print(s_feats[i].size())
 
             loss_distill += distillation_loss(s_feats[i], t_feats[i].detach(), getattr(self, 'margin%d' % (i+1))) \
                             / 2 ** (feat_num - i - 1)
